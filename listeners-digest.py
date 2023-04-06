@@ -8,7 +8,7 @@ from contextlib import closing
 
 POLLY_SSML_PROTECTED_SYMBOLS = {
         '&':'&amp;',
-        '\'':'&quot;',
+        '\"':'&quot;',
         '\'':'&apos;',
         '<':'&lt;',
         '>':'&gt;'
@@ -52,7 +52,7 @@ class URLToAudio:
                 'action': 'query',
                 'prop': 'extracts',
                 'exlimit': '1',
-                #'exsectionformat': 'plain',
+                'exsectionformat': 'plain', #plain | wiki | raw
                 'explaintext': 'true',
                 'exintro': 'true',
                 'titles': self.page_title
@@ -78,61 +78,34 @@ class URLToAudio:
             print('Error returning content')
     
 
-    def request_speech_synthesis(self):
-        ''''''
-        content_to_submit = self.mark_up_text_for_synthesis()
-        
-        aws_session = boto3.Session(profile_name='default')
-        aws_polly_client = aws_session.client('polly')
-
-        concatinated_audio_stream = bytearray()
-        try:
-            for request in content_to_submit:
-                print(request)
-                response = aws_polly_client.synthesize_speech(Engine = self.voice_engine,
-                                                 Text = request,
-                                                 OutputFormat = self.output_file_type,
-                                                 VoiceId = self.narration_voice,
-                                                 TextType = self.polly_text_format
-                                                 )
-                print(response)
-                if 'AudioStream' in response:
-                    with closing(response['AudioStream']) as stream:
-                        concatinated_audio_stream.extend(stream.read())
-                else:
-                    print('Could not stream audio')
-
-        except (BotoCoreError, ClientError) as error:
-            # The service returned an error, exit gracefully
-            print(error)
-
-        self.__write_steam_to_file(concatinated_audio_stream)
 
     def mark_up_text_for_synthesis(self):
         ''''''
         skipped_count = 0
         list_of_sentences = []
         for sentence in self.extracted_text.split('. '):
-            print("-----------------------------")
-            print(sentence)
             if '{\displaystyle' in sentence:
                 skipped_count += 1
                 continue
             
             sentence = sentence.strip()
+            sentence = sentence.replace('"','')
+            sentence = sentence.replace('\'','')
 
             sentence = re.sub(r'(\((?:[^\(]*?\)))', '', sentence) #inner brackets or brackets if not nested
             sentence = re.sub(r'(\((?:[^\(]*?\)))', '', sentence) #inner brackets or brackets if not nested   
 
             for symbol in POLLY_SSML_PROTECTED_SYMBOLS:
                 if symbol in sentence:
-                    sentence.replace(symbol, POLLY_SSML_PROTECTED_SYMBOLS.get(symbol))
+                    sentence = sentence.replace(symbol, POLLY_SSML_PROTECTED_SYMBOLS.get(symbol))
 
             if sentence[-1] != '.':
                 sentence = sentence + '.'
  
-            if self.add_semi_colon_delay:
-                sentence = sentence.replace(';','; <break time=\'' + str(int(self.semi_colon_delay_ms)) + 'ms\'/>')
+           # if self.add_semi_colon_delay:
+               # sentence = sentence.replace(';','; <break time=\'' + str(int(self.semi_colon_delay_ms)) + 'ms\'/>')
+
+
    
             if self.add_end_of_sentence_delay:
                 sentence = sentence + '<break time=\'' + str(int(self.end_of_sentence_delay_ms)) + 'ms\'/>'
@@ -143,11 +116,43 @@ class URLToAudio:
             sentence = '<speak>' + sentence + '</speak>'
 
             list_of_sentences.append(sentence)
+            
         if skipped_count > 0:
             list_of_sentences.append('<speak>' + str(skipped_count) + ' non-narratable sentences were removed from this narration.</speak>')
+            
         list_of_sentences.append('<speak>End of narration.</speak>')
         return list_of_sentences
 
+
+    def request_speech_synthesis(self):
+        ''''''
+        content_to_submit = self.mark_up_text_for_synthesis()
+        
+        aws_session = boto3.Session(profile_name='default')
+        aws_polly_client = aws_session.client('polly')
+
+        concatinated_audio_stream = bytearray()
+        try:
+            for request in content_to_submit:
+                response = aws_polly_client.synthesize_speech(Engine = self.voice_engine,
+                                                 Text = request,
+                                                 OutputFormat = self.output_file_type,
+                                                 VoiceId = self.narration_voice,
+                                                 TextType = self.polly_text_format
+                                                 )
+
+                if 'AudioStream' in response:
+                    with closing(response['AudioStream']) as stream:
+                        concatinated_audio_stream.extend(stream.read())
+                else:
+                    print('Could not stream audio')
+
+        except (BotoCoreError, ClientError) as error:
+            # The service returned an error, exit gracefully
+            raise error
+
+        self.__write_steam_to_file(concatinated_audio_stream)
+        
     def __write_steam_to_file(self,stream):
         ''''''
         try:
@@ -173,6 +178,7 @@ if __name__ == '__main__':
 
     converter = URLToAudio(url)
     converter.request_speech_synthesis()
+
     sentences = converter.mark_up_text_for_synthesis()
     for i in sentences:
         print(i)
