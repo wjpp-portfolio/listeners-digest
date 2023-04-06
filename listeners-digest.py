@@ -24,9 +24,9 @@ class URLToAudio:
         self.narration_voice = 'Brian'
         self.output_file_type = 'mp3'
 
-        self.add_end_of_sentence_delay = True
+        self.add_end_of_paragraph_delay = True
         self.add_semi_colon_delay = True
-        self.end_of_sentence_delay_ms = 600
+        self.end_of_paragraph_delay_ms = 600
         self.semi_colon_delay_ms = 300
         self.enable_converstional_tone = False
 
@@ -82,46 +82,57 @@ class URLToAudio:
     def mark_up_text_for_synthesis(self):
         ''''''
         skipped_count = 0
-        list_of_sentences = []
-        for sentence in self.extracted_text.split('. '):
-            if '{\displaystyle' in sentence:
+        list_of_paragraphs = []
+        self.extracted_text = re.sub(r'\.(?=[a-zA-Z])', '\n', self.extracted_text) #adds a new paragraph after full stops immediately followed by a non-digit character. This can happen where a wikipedia reference in the source hides a paragraph marker
+        for paragraph in self.extracted_text.split('\n'):
+
+            if len(paragraph) == 0:
+                continue
+
+
+            print("--------------------------")
+            print(paragraph)
+            if '{\displaystyle' in paragraph:
                 skipped_count += 1
                 continue
             
-            sentence = sentence.strip()
-            sentence = sentence.replace('"','')
-            sentence = sentence.replace('\'','')
+            paragraph = paragraph.strip()
+            #paragraph = paragraph.replace('"','')
+            #paragraph = paragraph.replace('\'','')
 
-            sentence = re.sub(r'(\((?:[^\(]*?\)))', '', sentence) #inner brackets or brackets if not nested
-            sentence = re.sub(r'(\((?:[^\(]*?\)))', '', sentence) #inner brackets or brackets if not nested   
+            
+            
+            paragraph = re.sub(r'(\((?:[^\(]*?\)))', '', paragraph) #removes brackets 
+            paragraph = re.sub(r'(\((?:[^\(]*?\)))', '', paragraph) #and nested brackets 
 
             for symbol in POLLY_SSML_PROTECTED_SYMBOLS:
-                if symbol in sentence:
-                    sentence = sentence.replace(symbol, POLLY_SSML_PROTECTED_SYMBOLS.get(symbol))
+                if symbol in paragraph:
+                    paragraph = paragraph.replace(symbol, POLLY_SSML_PROTECTED_SYMBOLS.get(symbol))
 
-            if sentence[-1] != '.':
-                sentence = sentence + '.'
+            #if sentence[-1] != '.':
+                #sentence = sentence + '.'
  
            # if self.add_semi_colon_delay:
-               # sentence = sentence.replace(';','; <break time=\'' + str(int(self.semi_colon_delay_ms)) + 'ms\'/>')
+               # paragraph = paragraph.replace(';','; <break time=\'' + str(int(self.semi_colon_delay_ms)) + 'ms\'/>')
 
 
    
-            if self.add_end_of_sentence_delay:
-                sentence = sentence + '<break time=\'' + str(int(self.end_of_sentence_delay_ms)) + 'ms\'/>'
+            if self.add_end_of_paragraph_delay:
+                #paragraph = paragraph + '<break time=\'' + str(int(self.end_of_paragraph_delay_ms)) + 'ms\'/>'
+                paragraph = '<p>' + paragraph + '</p>'
 
             if self.enable_converstional_tone:
-                sentence = '<amazon:domain name=\'conversational\'>' + sentence + '</amazon:domain>'
+                paragraph = '<amazon:domain name=\'conversational\'>' + paragraph + '</amazon:domain>'
 
-            sentence = '<speak>' + sentence + '</speak>'
+            paragraph = '<speak>' + paragraph + '</speak>'
 
-            list_of_sentences.append(sentence)
+            list_of_paragraphs.append(paragraph)
             
         if skipped_count > 0:
-            list_of_sentences.append('<speak>' + str(skipped_count) + ' non-narratable sentences were removed from this narration.</speak>')
+            list_of_paragraphs.append('<speak>' + str(skipped_count) + ' non-narratable sentences were removed from this narration.</speak>')
             
-        list_of_sentences.append('<speak>End of narration.</speak>')
-        return list_of_sentences
+        list_of_paragraphs.append('<speak>End of narration.</speak>')
+        return list_of_paragraphs
 
 
     def request_speech_synthesis(self):
@@ -173,8 +184,11 @@ class URLToAudio:
             opener = 'open' if sys.platform == 'darwin' else 'xdg-open'
             subprocess.call([opener, self.page_title + '.' + self.output_file_type])
 
+    def identify_acronyms_and_initialisms(self):
+        pass
+
 if __name__ == '__main__':
-    url = 'https://en.wikipedia.org/wiki/Superstition_(song)'
+    url = 'https://en.wikipedia.org/wiki/Indonesia'
 
     converter = URLToAudio(url)
     converter.request_speech_synthesis()
