@@ -1,16 +1,39 @@
 import requests
+import boto3
+import sys
+import subprocess
+from botocore.exceptions import BotoCoreError, ClientError
+from contextlib import closing
+
 class URLToAudio:
     """This class takes a Wikipedia article URL and returns an audio file of the summary section from that URL"""
-    def __init__(self,passedURL):
-        self.page_title = passedURL.split('/')[-1]        
-        self.get_wikipedia_content()
+    def __init__(self,passed_URL):
+        print('Add input validation')
+
+        self.polly_text_format = "ssml" #'ssml' or 'text'
+        self.voice_engine = "neural" #'standard' or 'neural'
+        self.narration_voice = "Brian"
+        self.output_file_type = "mp3"
+
+        self.add_end_of_sentence_delay = True
+        self.add_semi_colon_delay = True
+        self.end_of_sentence_delay_ms = 600
+        self.semi_colon_delay_ms = 500
+        self.enable_converstional_tone = False
+
+        if 'wikipedia' in passed_URL:     
+            self.page_title = passed_URL.split('/')[-1]      
+            self.extracted_text = self.get_wikipedia_content()
+        else:
+            self.page_title = 'test audio file'
+            self.extracted_text = passed_URL
         
     def __parse_request_string(self):
         """processes passed string and ensures format is suitable to submit to Wikipedia API"""
         pass
     
     def get_wikipedia_content(self):
-        """"""
+        """uses Wikipedia API to retreive page summary section"""
         API_url = "https://en.wikipedia.org/w/api.php"
         params = {
                 "format": "json",
@@ -24,35 +47,112 @@ class URLToAudio:
             }
 
         url_response = requests.get(url = API_url, params = params)
-
+        print('Add in page exists validation')
         if url_response.status_code == 200:
             body_data = url_response.json()
 
             page_code = list(body_data["query"]["pages"])[0] #page_code used 
 
             extracted_text = body_data["query"]["pages"][page_code]["extract"]
-            self.wikipedia_content = extracted_text
-    
+           
 
-    def __isolate_summary_content(self):
-        """"""
-        pass
+            if len(extracted_text) == 0 or extracted_text == '':
+                print('No text returned')
+                return False
+
+            return extracted_text
+        else:
+            print('Error returning content')
+    
 
     def request_speech_synthesis(self):
         """"""
-        __markup_text_for_synthesis()
+        content_to_submit = self.__markup_text_for_synthesis()
         
+        aws_session = boto3.Session(profile_name="default")
+        aws_polly_client = aws_session.client("polly")
+
+        concatinated_audio_stream = bytearray()
+        try:
+            for request in content_to_submit:
+                print(request)
+                response = aws_polly_client.synthesize_speech(Engine = self.voice_engine,
+                                                 Text = request,
+                                                 OutputFormat = self.output_file_type,
+                                                 VoiceId = self.narration_voice,
+                                                 TextType = self.polly_text_format
+                                                 )
+                print(response)
+                if "AudioStream" in response:
+                    with closing(response['AudioStream']) as stream:
+                        concatinated_audio_stream.extend(stream.read())
+                else:
+                    print("Could not stream audio")
+
+        except (BotoCoreError, ClientError) as error:
+            # The service returned an error, exit gracefully
+            print(error)
+
+        self.__write_steam_to_file(concatinated_audio_stream)
 
     def __markup_text_for_synthesis(self):
         """"""
-        pass
 
+        polly_SSML_protected_symbols = {
+            '&':'&amp;',
+            '\"':'&quot;',
+            '\'':'&apos;',
+            '<':'&lt;',
+            '>':'&gt;'
+            }
+        list_of_sentences = []
+        for sentence in self.extracted_text.split('. '):
+            if self.polly_text_format.lower() == "ssml":
+                for symbol in polly_SSML_protected_symbols:
+                    if symbol in sentence:
+                        sentence.replace(symbol, polly_SSML_protected_symbols.get(symbol))
+
+                sentence = sentence + '.'
+
+                if self.add_semi_colon_delay == True:
+                    sentence = sentence.replace(';','; <break time=\'' + str(int(self.semi_colon_delay_ms)) + 'ms\'/>')
+     
+                if self.add_end_of_sentence_delay == True:
+                    sentence = sentence + '<break time=\'' + str(int(self.end_of_sentence_delay_ms)) + 'ms\'/>'
+                    
+                if self.enable_converstional_tone == True:
+                    sentence = "<amazon:domain name=\"conversational\">" + sentence + "</amazon:domain>"
+                    
+                sentence = '<speak>' + sentence + '</speak>'
+       
+            list_of_sentences.append(sentence)
+
+        return list_of_sentences
+
+    def __write_steam_to_file(self,stream):
+        """"""
+        try:
+        # Open a file for writing the output as a binary stream
+            with open(self.page_title + '.' + self.output_file_type, "wb") as file:
+                file.write(stream)
+        except IOError as error:
+            # Could not write to file, exit gracefully
+            print(error)
+            sys.exit(-1)
+            
     def play_audio(self):
         """"""
-        pass
+        if sys.platform == "win32":
+            os.startfile(self.page_title + '.' + self.output_file_type)
+        else:
+            # The following works on macOS and Linux. (Darwin = mac, xdg-open = linux).
+            opener = "open" if sys.platform == "darwin" else "xdg-open"
+            subprocess.call([opener, self.page_title + '.' + self.output_file_type])
 
 if __name__ == '__main__':
-    url = "https://en.wikipedia.org/wiki/Fukushima_nuclear_disaster"
+    url = "this is a test string; no really it is. eggs, bananas, oranges and apples."
 
     converter = URLToAudio(url)
-    print(converter.wikipedia_content)
+    converter.request_speech_synthesis()
+    converter.play_audio()
+ 
