@@ -6,13 +6,12 @@ import re
 from botocore.exceptions import BotoCoreError, ClientError
 from contextlib import closing
 
-POLLY_SSML_PROTECTED_SYMBOLS = {
-        '&':'&amp;',
-        '\"':'&quot;',
-        '\'':'&apos;',
-        '<':'&lt;',
-        '>':'&gt;'
-        }
+POLLY_SSML_PROTECTED_SYMBOLS = {'&':'&amp;',
+                                '\"':'&quot;',
+                                '\'':'&apos;',
+                                '<':'&lt;',
+                                '>':'&gt;'
+                                }
 
 class URLToAudio:
     '''This class takes a Wikipedia article URL and returns an audio file of the summary section from that URL'''
@@ -23,12 +22,6 @@ class URLToAudio:
         self.voice_engine = 'neural' #'standard' or 'neural'
         self.narration_voice = 'Brian'
         self.output_file_type = 'mp3'
-
-        self.add_end_of_paragraph_delay = True
-        self.add_semi_colon_delay = True
-        self.end_of_paragraph_delay_ms = 600
-        self.semi_colon_delay_ms = 300
-        self.enable_converstional_tone = False
 
         if 'en.wikipedia.org' in passed_URL:     
             self.page_title = passed_URL.split('/')[-1]      
@@ -83,48 +76,35 @@ class URLToAudio:
         ''''''
         skipped_count = 0
         list_of_paragraphs = []
-        self.extracted_text = re.sub(r'\.(?=[a-zA-Z])', '\n', self.extracted_text) #adds a new paragraph after full stops immediately followed by a non-digit character. This can happen where a wikipedia reference in the source hides a paragraph marker
-        for paragraph in self.extracted_text.split('\n'):
 
+
+        self.extracted_text = re.sub(r'(\((?:[^\(]*?\)))', '', self.extracted_text) #removes brackets 
+        self.extracted_text = re.sub(r'(\((?:[^\(]*?\)))', '', self.extracted_text) #and nested brackets 
+        
+        self.extracted_text = re.sub(r'(?<=[a-z]|[0-9])\.(?=[A-Z])', '\n', self.extracted_text) #adds a new paragraph after full stops immediately followed by a non-digit character. This can happen where a wikipedia reference in the source hides a paragraph marker
+
+        #identifies format x.x. [A-Z].[A-Z].
+        # end of sentenece.Next sentence
+        # sentence with valid U.S. in it
+        # numberical 3.14 is pie
+        
+        for paragraph in self.extracted_text.split('\n'):
+            #print(len(paragraph), paragraph)
             if len(paragraph) == 0:
                 continue
 
-
-            print("--------------------------")
-            print(paragraph)
             if '{\displaystyle' in paragraph:
                 skipped_count += 1
                 continue
             
             paragraph = paragraph.strip()
-            #paragraph = paragraph.replace('"','')
-            #paragraph = paragraph.replace('\'','')
 
-            
-            
-            paragraph = re.sub(r'(\((?:[^\(]*?\)))', '', paragraph) #removes brackets 
-            paragraph = re.sub(r'(\((?:[^\(]*?\)))', '', paragraph) #and nested brackets 
 
             for symbol in POLLY_SSML_PROTECTED_SYMBOLS:
                 if symbol in paragraph:
                     paragraph = paragraph.replace(symbol, POLLY_SSML_PROTECTED_SYMBOLS.get(symbol))
 
-            #if sentence[-1] != '.':
-                #sentence = sentence + '.'
- 
-           # if self.add_semi_colon_delay:
-               # paragraph = paragraph.replace(';','; <break time=\'' + str(int(self.semi_colon_delay_ms)) + 'ms\'/>')
-
-
-   
-            if self.add_end_of_paragraph_delay:
-                #paragraph = paragraph + '<break time=\'' + str(int(self.end_of_paragraph_delay_ms)) + 'ms\'/>'
-                paragraph = '<p>' + paragraph + '</p>'
-
-            if self.enable_converstional_tone:
-                paragraph = '<amazon:domain name=\'conversational\'>' + paragraph + '</amazon:domain>'
-
-            paragraph = '<speak>' + paragraph + '</speak>'
+            paragraph = '<speak><p>' + paragraph + '</p></speak>'
 
             list_of_paragraphs.append(paragraph)
             
@@ -188,13 +168,12 @@ class URLToAudio:
         pass
 
 if __name__ == '__main__':
-    url = 'https://en.wikipedia.org/wiki/Indonesia'
+    url = 'https://en.wikipedia.org/wiki/Long_Island'
 
     converter = URLToAudio(url)
     converter.request_speech_synthesis()
-
-    sentences = converter.mark_up_text_for_synthesis()
-    for i in sentences:
+    a = converter.mark_up_text_for_synthesis()
+    for i in a:
         print(i)
     converter.play_audio()
  
