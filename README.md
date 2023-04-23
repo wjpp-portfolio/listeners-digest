@@ -15,4 +15,12 @@ The wikipedia API is public and does not require authentication to get page cont
 
 The program will attempt to save an .mp3 audio file at the same location as the script and auto-play it on your operating system (Windows, Lunix or Mac)
 
+## Changes to source text for narration
+This program makes the following modifications to text for easier listening:
+- Identifies 4 digit numbers as dates if they are preceed by any of the following: of, in, before, after, until, since. Otherwise program assumes these are numbers and narrates accordingly.
+- Removes bracketed asides, as well as nexted brackets to a depth of 2. This means some clarification may be lost but eases listening.
+- Any content that has HTML tag 'displaystyle' as this usually indicates a non-text item such as a math foruma, or expression.
+
+If any lines of source were skipped this will be referenced at the end of the narration. 
+
 
