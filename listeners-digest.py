@@ -13,11 +13,11 @@ POLLY_SSML_PROTECTED_SYMBOLS = {'&':'&amp;',
                                 '>':'&gt;'
                                 }
 
+
+
 class URLToAudio:
     '''This class takes a Wikipedia article URL and returns an audio file of the summary section from that URL'''
     def __init__(self,passed_URL):
-        print('Add input validation')
-
         self.polly_text_format = 'ssml' #'ssml' or 'text'
         self.voice_engine = 'neural' #'standard' or 'neural'
         self.narration_voice = 'Brian'
@@ -25,18 +25,14 @@ class URLToAudio:
 
         if 'en.wikipedia.org' in passed_URL:     
             self.page_title = passed_URL.split('/')[-1]      
-            self.extracted_text = self.get_wikipedia_content()
+
         elif passed_URL == '':
             pass
             
         else:
             self.page_title = 'test audio file'
             self.extracted_text = passed_URL
-        
-    def __parse_request_string(self):
-        '''processes passed string and ensures format is suitable to submit to Wikipedia API'''
-        pass
-    
+
     def get_wikipedia_content(self):
         '''uses Wikipedia API to retreive page summary section'''
         API_url = 'https://en.wikipedia.org/w/api.php'
@@ -56,12 +52,9 @@ class URLToAudio:
         
         if url_response.status_code == 200:
             body_data = url_response.json()
-
             page_code = list(body_data['query']['pages'])[0] #page_code used 
-
             extracted_text = body_data['query']['pages'][page_code]['extract']
            
-
             if len(extracted_text) == 0 or extracted_text == '':
                 print('No text returned')
                 return False
@@ -69,27 +62,20 @@ class URLToAudio:
             return extracted_text
         else:
             print('Error returning content')
-    
-
+            return False
 
     def mark_up_text_for_synthesis(self):
         ''''''
         skipped_count = 0
         list_of_paragraphs = []
 
-
+        self.extracted_text = re.sub(r'([\[|\]])', '', self.extracted_text) #removes square brackets 
         self.extracted_text = re.sub(r'(\((?:[^\(]*?\)))', '', self.extracted_text) #removes brackets 
         self.extracted_text = re.sub(r'(\((?:[^\(]*?\)))', '', self.extracted_text) #and nested brackets 
         
-        self.extracted_text = re.sub(r'(?<=[a-z]|[0-9])\.(?=[A-Z])', '\n', self.extracted_text) #adds a new paragraph after full stops immediately followed by a non-digit character. This can happen where a wikipedia reference in the source hides a paragraph marker
-
-        #identifies format x.x. [A-Z].[A-Z].
-        # end of sentenece.Next sentence
-        # sentence with valid U.S. in it
-        # numberical 3.14 is pie
+        self.extracted_text = re.sub(r'(?<=[a-z]|[0-9])\.(?=[A-Z])', '.\n', self.extracted_text) #adds a new paragraph after full stops immediately followed by a non-digit character. This can happen where a wikipedia reference in the source hides a paragraph marker
         
         for paragraph in self.extracted_text.split('\n'):
-            #print(len(paragraph), paragraph)
             if len(paragraph) == 0:
                 continue
 
@@ -99,21 +85,20 @@ class URLToAudio:
             
             paragraph = paragraph.strip()
 
-
             for symbol in POLLY_SSML_PROTECTED_SYMBOLS:
                 if symbol in paragraph:
                     paragraph = paragraph.replace(symbol, POLLY_SSML_PROTECTED_SYMBOLS.get(symbol))
 
+            paragraph = re.sub(r'(?<=[in|the|of|before|after|until|since|from|and|-]\s)[1|2]\d{3}(?=[\s|\.|-|,|;|!])', regex_dates, paragraph) 
             paragraph = '<speak><p>' + paragraph + '</p></speak>'
-
             list_of_paragraphs.append(paragraph)
             
         if skipped_count > 0:
-            list_of_paragraphs.append('<speak>' + str(skipped_count) + ' non-narratable sentences were removed from this narration.</speak>')
+            list_of_paragraphs.append('<speak>' + str(skipped_count) + ' non-narratable sentences were removed for easier listening.</speak>')
             
         list_of_paragraphs.append('<speak>End of narration.</speak>')
+        
         return list_of_paragraphs
-
 
     def request_speech_synthesis(self):
         ''''''
@@ -164,13 +149,15 @@ class URLToAudio:
             opener = 'open' if sys.platform == 'darwin' else 'xdg-open'
             subprocess.call([opener, self.page_title + '.' + self.output_file_type])
 
-    def identify_acronyms_and_initialisms(self):
-        pass
 
+def regex_dates(match):
+    return '<say-as interpret-as="date" format="y">' + match[0] + '</say-as>'
+                    
 if __name__ == '__main__':
-    url = 'https://en.wikipedia.org/wiki/Long_Island'
+    url = 'https://en.wikipedia.org/wiki/Attack_on_Pearl_Harbor'
 
     converter = URLToAudio(url)
+    converter.extracted_text = converter.get_wikipedia_content()
     converter.request_speech_synthesis()
     a = converter.mark_up_text_for_synthesis()
     for i in a:

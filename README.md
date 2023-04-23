@@ -14,6 +14,10 @@ after boto3 is installed, run ```aws configure``` in the command line to provide
 The wikipedia API is public and does not require authentication to get page content
 
 The program will attempt to save an .mp3 audio file at the same location as the script and auto-play it on your operating system (Windows, Lunix or Mac)
+## Limitations
+Much of the information in Wikipedia is best consumed visually since context is clear.  Many bits of data are ambiguous or confusing when  narrated, such as fractions, equations, powers, quotes, abbreviations and professional parlance.
+
+Wikipedia is fairly inconsistent in its written format due to its many authors; attempting to manage some of the above issues in the narration invariably falls foul of this stylistic difference.
 
 ## Changes to source text for narration
 This program makes the following modifications to text for easier listening:
